@@ -6,6 +6,7 @@
     "connect": "^3.5.0",
     "rx": "^4.1.0",
     "serve-static": "^1.11.1",
-    "server-destroy": "^1.0.1"
+    "server-destroy": "^1.0.1",
+    "typescript": "2.1.1"
   }
 }
