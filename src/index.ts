@@ -5,17 +5,21 @@ import bindHttp from './effects/bindHttp';
 import getDirs  from './reads/dir$';
 import {IDirLookup} from "./reads/dir$";
 
-function getServeStatic(dir, options): ServeStatic {
-    return {route: '/', dir, options};
-}
-
-const log = (name) => (x) => console.log('-->', name, x);
-
 const defaults = {
     port: 3000
 };
 
-// convert options to streams
+/**
+ * The role of a 'converter' is to take user input, such as a string from
+ * configuration, and produce a stream of <OptionDefinition> values. Every converter
+ * is ALWAYS called, but it may be called with user input (if they provided a matching key name)
+ * or it may be called with a default value (if this item requires it) or it may be
+ * called with nothing.
+ *
+ * RE: errors - a converter can 'throw' by returning an Rx.Observable.throw for errors that
+ * cannot be recovered from (such as an unavailable port), alternatively an array of non-fatal
+ * errors can be returned to allow things such as improved UX ) for validating types etc
+ */
 const converters = {
     port: function (value: number): Rx.Observable<OptionDefinition> {
         return Rx.Observable.of({
@@ -43,27 +47,26 @@ const converters = {
     }
 };
 
-function getStreams (converters, config, defaults) {
+/**
+ * Take the converters, userInput and defaults and produce an array
+ * of lazy streams that have {key, output$} - where `key` is the
+ * top level option name, and output$ is a stream of values it will
+ * produce in the future.
+ */
+function getStreams (converters, userInput, defaults) {
     return Object.keys(converters).reduce(function (acc, key) {
 
-        const configValue  = config[key];
-        const defaultValue = defaults[key];
+        const userInputValue  = userInput[key];
+        const defaultValue    = defaults[key];
 
-        if (typeof configValue !== "undefined") {
-            return acc.concat({
-                key: key,
-                output$: converters[key]
-                    .call(null, configValue)
-                    .map(output => {
-                        return {key, output}
-                    })
-            });
-        }
+        const valueToUse   = (typeof userInputValue !== "undefined")
+            ? userInputValue
+            : defaultValue;
 
         return acc.concat({
             key: key,
             output$: converters[key]
-                .call(null, defaultValue)
+                .call(null, valueToUse)
                 .map(output => {
                     return {key, output}
                 })
@@ -74,8 +77,18 @@ function getStreams (converters, config, defaults) {
 
 function bs(config: BsConfig, reads: Reads, effects: Effects) {
 
+    /**
+     * Create a stream representing the user input
+     * this could be pushed onto at a later time
+     * which would cause all options/middlewares to be re-processed
+     */
     const userInput$ = new Rx.BehaviorSubject(config);
 
+    /**
+     * Combine ALL of the the output$ streams and produce
+     * all of them whenever 1 changes
+     * @type {Rx.Observable<TResult>}
+     */
     const updates = userInput$
         .map(input => {
             return getStreams(converters, input, defaults);
@@ -84,6 +97,10 @@ function bs(config: BsConfig, reads: Reads, effects: Effects) {
             return Rx.Observable.combineLatest.apply(Rx.Observable, streams.map(x => x.output$));
         });
 
+    /**
+     * A stream of option only updates
+     * @type {Rx.Observable<any>}
+     */
     const optionUpdates = updates
         .map(items => {
             return items.reduce((acc, item) => {
@@ -92,6 +109,10 @@ function bs(config: BsConfig, reads: Reads, effects: Effects) {
             }, {});
         });
 
+    /**
+     * A steam of middleware only updates
+     * @type {Rx.Observable<any>}
+     */
     const middlewareUpdates = updates
         .map(items => {
             return items.reduce((acc, item) => {
@@ -102,13 +123,14 @@ function bs(config: BsConfig, reads: Reads, effects: Effects) {
             }, []);
         });
 
-    Rx.Observable.interval(5000).map(x => {
-        console.log(4000 + x + 1);
-        userInput$.onNext({
-            port: 4000 + x + 1 // todo smarter options merging (keep track of current etc)
-        });
-    }).subscribe();
-
+    /**
+     * return a stream of middleware updates
+     * that cause effects to occur (such as binding to a http server etc)
+     *
+     * The idea is that this entire program is composed in a way that allows
+     * new user input to be accepting whilst running and it knows how to
+     * teardown/setup new resources to handle that.
+     */
     return middlewareUpdates
         .withLatestFrom(optionUpdates)
         .flatMapLatest(([middleware, options]) => {
@@ -118,6 +140,10 @@ function bs(config: BsConfig, reads: Reads, effects: Effects) {
         });
 }
 
+/**
+ * Exercise the API
+ * @type {Rx.Observable<TResult>}
+ */
 const sub = bs(
     {
         serveStatic: ['./', 'fixtures'],
