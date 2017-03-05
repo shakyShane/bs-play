@@ -1,0 +1,11 @@
+{
+  "dependencies": {
+    "@types/connect": "^3.4.30",
+    "@types/node": "^6.0.57",
+    "@types/serve-static": "^1.7.31",
+    "connect": "^3.5.0",
+    "rx": "^4.1.0",
+    "serve-static": "^1.11.1",
+    "server-destroy": "^1.0.1"
+  }
+}

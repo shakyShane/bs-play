@@ -1,0 +1,12 @@
+{
+    "compilerOptions": {
+        "target": "es5",
+        "module": "commonjs",
+        "inlineSourceMap": true,
+        "outDir": "dist"
+    },
+    "include": [
+        "types/custom.d.ts",
+        "src/*"
+    ]
+}
